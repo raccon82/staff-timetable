@@ -1515,6 +1515,32 @@ input:focus {
   background-color: #f0f4f8;
 }
 
+/* Print / PDF: only show the timetable grid when printing */
+@media print {
+  body.printing * {
+    visibility: hidden;
+  }
+  body.printing .timetable-grid-container,
+  body.printing .timetable-grid-container * {
+    visibility: visible;
+  }
+  body.printing .timetable-grid-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border: none;
+    box-shadow: none;
+  }
+  body.printing .timetable-grid {
+    width: 100%;
+  }
+  body.printing .timetable-grid th,
+  body.printing .timetable-grid td {
+    min-width: 80px;
+  }
+}
+
 
 
 

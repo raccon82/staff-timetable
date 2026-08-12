@@ -954,6 +954,15 @@ function App() {
     ? (staffHbl[selectedEntityId] || [])
     : hblDays;
 
+  // Print / PDF: add a print-only class to the app so the CSS can hide
+  // everything except the timetable grid, then trigger the browser print dialog.
+  const handlePrint = () => {
+    document.body.classList.add('printing');
+    window.print();
+    // Remove the class after the print dialog closes (or shortly after).
+    setTimeout(() => document.body.classList.remove('printing'), 500);
+  };
+
   return (
     <div className="app-container">
       <header className="header">
@@ -1129,7 +1138,7 @@ function App() {
                   </button>
                 ))}
               </div>
-              <button className="btn-outline-icon print-btn">
+              <button className="btn-outline-icon print-btn" onClick={handlePrint}>
                 <span className="icon">🖨️</span> Print / PDF
               </button>
             </div>
