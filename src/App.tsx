@@ -38,8 +38,13 @@ interface Schedule {
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const TIME_SLOTS = [
-  '8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', 
+  '8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM',
   '2:00 PM', '3:00 PM', '4:00 PM'
+];
+// Print uses 10 separate hourly columns (8:00 AM - 5:00 PM), each its own column.
+const PRINT_TIME_SLOTS = [
+  '8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM',
+  '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM'
 ];
 const SHIFT_TYPES: ShiftType[] = ['Morning', 'Afternoon', 'Night', 'Off'];
 
@@ -954,13 +959,128 @@ function App() {
     ? (staffHbl[selectedEntityId] || [])
     : hblDays;
 
-  // Print / PDF: add a print-only class to the app so the CSS can hide
-  // everything except the timetable grid, then trigger the browser print dialog.
+  // Print / PDF: build a clean, dedicated print table from the SAME data/state
+  // currently on screen (via getSlotContent), so it always reflects the current
+  // view type and selected staff/class/location. Uses 10 separate equal-width
+  // hourly columns (8:00 AM - 5:00 PM) and A4 landscape layout.
   const handlePrint = () => {
-    document.body.classList.add('printing');
-    window.print();
-    // Remove the class after the print dialog closes (or shortly after).
-    setTimeout(() => document.body.classList.remove('printing'), 500);
+    // Resolve the current view type label and selected entity name from state.
+    const viewLabel = viewType === 'Student' ? 'Class' : viewType;
+    let entityName = '';
+    if (viewType === 'Student') {
+      entityName = studentClasses.find(c => c.id === selectedEntityId)?.name || '';
+    } else if (viewType === 'Staff') {
+      entityName = staff.find(s => s.id === selectedEntityId)?.name || '';
+    } else if (viewType === 'Location') {
+      entityName = locations.find(l => l.id === selectedEntityId)?.name || '';
+    }
+
+    const title = 'Weekly Timetable';
+    const headerLine = entityName ? `${viewLabel}: ${entityName}` : viewLabel;
+
+    // Build the header row: DAY + 10 hourly columns.
+    let headerCells = '<th class="day-column-header">DAY</th>';
+    for (const slot of PRINT_TIME_SLOTS) {
+      headerCells += `<th>${slot}</th>`;
+    }
+
+    // Build the body rows from the live data for the current selection.
+    let bodyRows = '';
+    for (const day of DAYS.slice(0, 5)) {
+      const isHbl = viewHblDays.includes(day);
+      bodyRows += `<tr class="${isHbl ? 'hbl-day-row' : ''}">`;
+      bodyRows += `<td class="day-name-cell">${day}${isHbl ? '<div class="hbl-indicator">HBL</div>' : ''}</td>`;
+      for (const slot of PRINT_TIME_SLOTS) {
+        const content = getSlotContent(day, slot);
+        if (content && content.type === 'activity') {
+          bodyRows += `<td class="activity-slot"><span class="cell-label-text">${content.label}</span>${content.extra ? `<span class="cell-extra-text">${content.extra}</span>` : ''}</td>`;
+        } else {
+          bodyRows += '<td></td>';
+        }
+      }
+      bodyRows += '</tr>';
+    }
+
+    // Column widths: DAY ~10%, each of the 10 time columns ~9%.
+    let colgroup = '<colgroup><col style="width:10%">';
+    for (let i = 0; i < PRINT_TIME_SLOTS.length; i++) colgroup += '<col style="width:9%">';
+    colgroup += '</colgroup>';
+
+    const printWindow = window.open('', '_blank', 'width=1200,height=800');
+    if (!printWindow) {
+      // Popup blocked — fall back to printing the current page.
+      window.print();
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${title} - ${headerLine}</title>
+          <style>
+            @page { size: A4 landscape; margin: 8mm; }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+              color: #1a202c;
+            }
+            .print-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: baseline;
+              border-bottom: 2px solid #1a202c;
+              padding-bottom: 6px;
+              margin-bottom: 10px;
+            }
+            .print-header h1 { margin: 0; font-size: 18px; }
+            .print-header .print-sub { font-size: 13px; color: #4a5568; font-weight: 600; }
+            table {
+              border-collapse: collapse;
+              width: 100%;
+              table-layout: fixed;
+            }
+            th, td {
+              border: 1px solid #cbd5e0;
+              padding: 6px 3px;
+              text-align: center;
+              font-size: 10px;
+              vertical-align: middle;
+              word-wrap: break-word;
+              overflow-wrap: break-word;
+              white-space: normal;
+            }
+            th { background: #edf2f7; font-weight: 700; }
+            .day-column-header, .day-name-cell { text-align: left; font-weight: 700; }
+            .hbl-day-row { background: #fff5f5; }
+            .hbl-indicator { color: #e53e3e; font-weight: 800; font-size: 8px; margin-top: 2px; }
+            .activity-slot { background: #ebf8ff; }
+            .cell-label-text { font-weight: 700; font-size: 9px; display: block; }
+            .cell-extra-text { font-weight: 800; font-size: 8px; opacity: 0.6; display: block; }
+            tr { break-inside: avoid; }
+            @media print {
+              body { padding: 0; }
+              .print-header { margin-bottom: 8px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="print-header">
+            <h1>${title}</h1>
+            <span class="print-sub">${headerLine}</span>
+          </div>
+          <table>
+            ${colgroup}
+            <thead><tr>${headerCells}</tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
   };
 
   return (

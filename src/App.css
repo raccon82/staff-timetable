@@ -1517,20 +1517,20 @@ input:focus {
 
 /* Print / PDF: only show the timetable grid when printing */
 @media print {
-  body.printing * {
-    visibility: hidden;
-  }
-  body.printing .timetable-grid-container,
-  body.printing .timetable-grid-container * {
-    visibility: visible;
+  body.printing .header-top,
+  body.printing .content,
+  body.printing .footer,
+  body.printing .timetables-header,
+  body.printing .scheduling-errors-section,
+  body.printing .unscheduled-section,
+  body.printing .view-switcher-section,
+  body.printing .entity-selection-row {
+    display: none !important;
   }
   body.printing .timetable-grid-container {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
     border: none;
     box-shadow: none;
+    overflow: visible;
   }
   body.printing .timetable-grid {
     width: 100%;
