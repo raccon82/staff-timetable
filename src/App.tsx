@@ -719,6 +719,20 @@ function App() {
     setModules(modules.filter(m => m.id !== id));
   };
 
+  // Delete the module currently selected in the New Activity form, along with
+  // any activities that were created from it, then reset the module selection.
+  const deleteModuleFromActivityForm = () => {
+    if (!newActivityModule) return;
+    const mod = modules.find(m => m.id === newActivityModule);
+    if (!mod) return;
+    if (confirm(`Delete module ${mod.code} - ${mod.name}?`)) {
+      setModules(modules.filter(m => m.id !== newActivityModule));
+      setActivities(prev => prev.filter(a => a.moduleId !== newActivityModule));
+      setNewActivityModule('');
+      setNewActivityTeachers([]);
+    }
+  };
+
   const updateShift = (staffId: string, day: string, shift: ShiftType) => {
     setSchedule(prev => ({
       ...prev,
@@ -1629,23 +1643,34 @@ function App() {
               <div className="form-grid">
                 <div className="form-field">
                   <label className="field-label">MODULE</label>
-                  <select 
-                    value={newActivityModule} 
-                    onChange={(e) => handleModuleSelect(e.target.value)}
-                    className="module-select"
-                  >
-                    <option value="">Select module</option>
-                    {modules.filter(mod => {
-                      // Show if it doesn't have an activity OR if we are currently editing its activity
-                      const hasActivity = activities.some(a => a.moduleId === mod.id);
-                      const isEditingThisMod = editingActivityId && activities.find(a => a.id === editingActivityId)?.moduleId === mod.id;
-                      return !hasActivity || isEditingThisMod;
-                    }).map(mod => (
-                      <option key={mod.id} value={mod.id}>
-                        {mod.code} - {mod.name} ({mod.type} • {mod.studentClasses.join(', ')})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="module-select-row">
+                    <select
+                      value={newActivityModule}
+                      onChange={(e) => handleModuleSelect(e.target.value)}
+                      className="module-select"
+                    >
+                      <option value="">Select module</option>
+                      {modules.filter(mod => {
+                        // Show if it doesn't have an activity OR if we are currently editing its activity
+                        const hasActivity = activities.some(a => a.moduleId === mod.id);
+                        const isEditingThisMod = editingActivityId && activities.find(a => a.id === editingActivityId)?.moduleId === mod.id;
+                        return !hasActivity || isEditingThisMod;
+                      }).map(mod => (
+                        <option key={mod.id} value={mod.id}>
+                          {mod.code} - {mod.name} ({mod.type} • {mod.studentClasses.join(', ')})
+                        </option>
+                      ))}
+                    </select>
+                    {newActivityModule && (
+                      <button
+                        className="module-delete-btn"
+                        onClick={deleteModuleFromActivityForm}
+                        title="Delete this module"
+                      >
+                        🗑️
+                      </button>
+                    )}
+                  </div>
                   <p className="field-hint">Modules already scheduled are hidden.</p>
                 </div>
 

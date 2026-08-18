@@ -115,6 +115,35 @@ body {
   padding-right: 2.5rem;
 }
 
+.module-select-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.module-select-row .module-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.module-delete-btn {
+  background: none;
+  border: 1px solid #fed7d7;
+  color: #e53e3e;
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.module-delete-btn:hover {
+  background: #fff5f5;
+  transform: scale(1.05);
+}
+
 .field-hint {
   font-size: 0.85rem;
   color: #a0aec0;
