@@ -68,19 +68,8 @@ function App() {
   const [viewType, setViewType] = useState<ViewType>('Student');
   const [selectedEntityId, setSelectedEntityId] = useState<string>('1'); // Default to first class
   
-  // State for Staff (Lecturers)
-  const [staff, setStaff] = useState<Staff[]>([
-    { id: '1', name: 'Andrew Lim' },
-    { id: '2', name: 'Jayna' },
-    { id: '3', name: 'Thegimin' },
-    { id: '4', name: 'David' },
-    { id: '5', name: 'Boonkeng' },
-    { id: '6', name: 'Josepth' },
-    { id: '7', name: 'roy' },
-    { id: '8', name: 'Teo' },
-    { id: '9', name: 'Prakash' },
-    { id: '10', name: 'Joan' },
-  ]);
+  // State for Staff (Lecturers) - starts empty; lecturers are added via the Resources tab
+  const [staff, setStaff] = useState<Staff[]>([]);
   const [schedule, setSchedule] = useState<Schedule>({});
   const [newStaffName, setNewStaffName] = useState('');
   const [filterText, setFilterText] = useState('');
