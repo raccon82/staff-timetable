@@ -63,47 +63,133 @@ interface ActivityItem {
 
 type ViewType = 'Student' | 'Staff' | 'Location';
 
+interface Department {
+  id: string;
+  name: string;
+}
+
+interface DepartmentData {
+  staff: Staff[];
+  schedule: Schedule;
+  locations: LocationItem[];
+  studentClasses: StudentClass[];
+  modules: ModuleItem[];
+  activities: ActivityItem[];
+  hblDays: string[];
+  staffHbl: { [staffId: string]: string[] };
+  locationAvailability: { [locationId: string]: { [day: string]: 'Free' | 'Restricted' } };
+}
+
+// Default seed data — the app's original starting configuration. A newly created
+// department starts from this so the existing configuration is never lost.
+const DEFAULT_LOCATIONS: LocationItem[] = [
+  { id: '1', name: 'T03-13' },
+  { id: '2', name: 'B05-10' },
+  { id: '3', name: 'T03-23' },
+  { id: '4', name: 'T03-21' },
+  { id: '5', name: 'T03-19' },
+  { id: '6', name: 'T03-22' },
+  { id: '7', name: 'T03-12' },
+  { id: '8', name: 'T03-09' },
+];
+
+const DEFAULT_STUDENT_CLASSES: StudentClass[] = [
+  { id: '1', name: 'PC2401W' },
+  { id: '2', name: 'PC2401T' },
+  { id: '3', name: 'PC2501M' },
+  { id: '4', name: 'PC2501L' },
+  { id: '5', name: 'PC2501K' },
+  { id: '6', name: 'PC2501J' },
+  { id: '7', name: 'PC2601D' },
+  { id: '8', name: 'PC2601C' },
+  { id: '9', name: 'PC2601B' },
+  { id: '10', name: 'PC2601A' },
+];
+
+// localStorage keys. Each department's data is saved under its own key so the
+// departments can never mix.
+const DEPARTMENTS_KEY = 'timetable_departments';
+const CURRENT_DEPARTMENT_KEY = 'timetable_current_department';
+const departmentDataKey = (deptId: string) => `timetable_data_${deptId}`;
+
+const loadJSON = <T,>(key: string): T | null => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+};
+
+const saveJSON = (key: string, value: unknown) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage unavailable (private mode / quota) — the app keeps working in memory.
+  }
+};
+
+// Small helper for generating unique ids outside the render scope.
+const newId = () => Math.random().toString(36).substr(2, 9);
+
+// True when a stored HBL snapshot matches the current HBL state. Used to avoid
+// auto-rebuilding the timetable right after a department's data is loaded.
+const sameHblState = (
+  snapshot: { hblDays: string[]; staffHbl: { [id: string]: string[] } },
+  currentHblDays: string[],
+  currentStaffHbl: { [id: string]: string[] }
+) => {
+  if (snapshot.hblDays.length !== currentHblDays.length) return false;
+  if (!snapshot.hblDays.every((d, i) => d === currentHblDays[i])) return false;
+  const snapKeys = Object.keys(snapshot.staffHbl);
+  const curKeys = Object.keys(currentStaffHbl);
+  if (snapKeys.length !== curKeys.length) return false;
+  return snapKeys.every(id => {
+    const a = snapshot.staffHbl[id] || [];
+    const b = currentStaffHbl[id] || [];
+    return a.length === b.length && a.every((d, i) => d === b[i]);
+  });
+};
+
 function App() {
+  // One-time initial state computed on mount: restore the saved department list
+  // and the currently active department's data from localStorage.
+  const [initialState] = useState(() => {
+    const storedDepartments = loadJSON<Department[]>(DEPARTMENTS_KEY) || [];
+    const storedId = loadJSON<string>(CURRENT_DEPARTMENT_KEY);
+    const currentDepartmentId = storedDepartments.some(d => d.id === storedId) ? storedId : null;
+    const data = currentDepartmentId ? loadJSON<DepartmentData>(departmentDataKey(currentDepartmentId)) : null;
+    return { departments: storedDepartments, currentDepartmentId, data };
+  });
+
   const [activeTab, setActiveTab] = useState<Tab>('activities');
   const [viewType, setViewType] = useState<ViewType>('Student');
-  const [selectedEntityId, setSelectedEntityId] = useState<string>('1'); // Default to first class
-  
-  // State for Staff (Lecturers) - starts empty; lecturers are added via the Resources tab
-  const [staff, setStaff] = useState<Staff[]>([]);
-  const [schedule, setSchedule] = useState<Schedule>({});
+  const [selectedEntityId, setSelectedEntityId] = useState<string>(initialState.data?.studentClasses?.[0]?.id ?? '1');
+
+  // Department state
+  const [departments, setDepartments] = useState<Department[]>(initialState.departments);
+  const [currentDepartmentId, setCurrentDepartmentId] = useState<string | null>(initialState.currentDepartmentId);
+  const [showDepartmentSetup, setShowDepartmentSetup] = useState(false);
+  const [newDepartmentName, setNewDepartmentName] = useState('');
+
+  const currentDepartment = departments.find(d => d.id === currentDepartmentId) || null;
+
+  // State for Staff (Lecturers) - per department; loaded from localStorage
+  const [staff, setStaff] = useState<Staff[]>(initialState.data?.staff ?? []);
+  const [schedule, setSchedule] = useState<Schedule>(initialState.data?.schedule ?? {});
   const [newStaffName, setNewStaffName] = useState('');
   const [filterText, setFilterText] = useState('');
 
-  // State for Locations (Labs & Rooms)
-  const [locations, setLocations] = useState<LocationItem[]>([
-    { id: '1', name: 'T03-13' },
-    { id: '2', name: 'B05-10' },
-    { id: '3', name: 'T03-23' },
-    { id: '4', name: 'T03-21' },
-    { id: '5', name: 'T03-19' },
-    { id: '6', name: 'T03-22' },
-    { id: '7', name: 'T03-12' },
-    { id: '8', name: 'T03-09' },
-  ]);
+  // State for Locations (Labs & Rooms) - per department
+  const [locations, setLocations] = useState<LocationItem[]>(initialState.data?.locations ?? DEFAULT_LOCATIONS);
   const [newLocationName, setNewLocationName] = useState('');
 
-  // State for Student Classes
-  const [studentClasses, setStudentClasses] = useState<StudentClass[]>([
-    { id: '1', name: 'PC2401W' },
-    { id: '2', name: 'PC2401T' },
-    { id: '3', name: 'PC2501M' },
-    { id: '4', name: 'PC2501L' },
-    { id: '5', name: 'PC2501K' },
-    { id: '6', name: 'PC2501J' },
-    { id: '7', name: 'PC2601D' },
-    { id: '8', name: 'PC2601C' },
-    { id: '9', name: 'PC2601B' },
-    { id: '10', name: 'PC2601A' },
-  ]);
+  // State for Student Classes - per department
+  const [studentClasses, setStudentClasses] = useState<StudentClass[]>(initialState.data?.studentClasses ?? DEFAULT_STUDENT_CLASSES);
   const [newStudentClassName, setNewStudentClassName] = useState('');
 
-  // State for Modules
-  const [modules, setModules] = useState<ModuleItem[]>([]);
+  // State for Modules - per department
+  const [modules, setModules] = useState<ModuleItem[]>(initialState.data?.modules ?? []);
   const [newModuleCode, setNewModuleCode] = useState('');
   const [newModuleTitle, setNewModuleTitle] = useState('');
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
@@ -111,8 +197,8 @@ function App() {
   const [newModuleHours, setNewModuleHours] = useState<string>('0');
   const [selectedTeachers, setSelectedTeachers] = useState<string[]>([]);
 
-  // State for Activities
-  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  // State for Activities - per department
+  const [activities, setActivities] = useState<ActivityItem[]>(initialState.data?.activities ?? []);
   const [schedulingErrors, setSchedulingErrors] = useState<string[]>([]);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [newActivityModule, setNewActivityModule] = useState('');
@@ -123,11 +209,118 @@ function App() {
   const [newActivityCount, setNewActivityCount] = useState(1);
   const [newActivityLocation, setNewActivityLocation] = useState('');
 
-  // State for Rules
-  const [hblDays, setHblDays] = useState<string[]>([]);
+  // State for Rules - per department
+  const [hblDays, setHblDays] = useState<string[]>(initialState.data?.hblDays ?? []);
   // Per-staff Home-Based Learning days: staffId -> list of HBL days
-  const [staffHbl, setStaffHbl] = useState<{ [staffId: string]: string[] }>({});
-  const [locationAvailability, setLocationAvailability] = useState<{ [locationId: string]: { [day: string]: 'Free' | 'Restricted' } }>({});
+  const [staffHbl, setStaffHbl] = useState<{ [staffId: string]: string[] }>(initialState.data?.staffHbl ?? {});
+  const [locationAvailability, setLocationAvailability] = useState<{ [locationId: string]: { [day: string]: 'Free' | 'Restricted' } }>(initialState.data?.locationAvailability ?? {});
+
+  // HBL snapshot of the department that was last loaded — used to stop the
+  // auto-rebuild effect from re-running right after a department switch.
+  const loadedHblRef = useRef<{ hblDays: string[]; staffHbl: { [id: string]: string[] } } | null>(
+    initialState.data ? { hblDays: initialState.data.hblDays ?? [], staffHbl: initialState.data.staffHbl ?? {} } : null
+  );
+
+  const collectCurrentData = (): DepartmentData => ({
+    staff,
+    schedule,
+    locations,
+    studentClasses,
+    modules,
+    activities,
+    hblDays,
+    staffHbl,
+    locationAvailability,
+  });
+
+  const createSeedData = (): DepartmentData => ({
+    staff: [],
+    schedule: {},
+    locations: DEFAULT_LOCATIONS.map(l => ({ ...l })),
+    studentClasses: DEFAULT_STUDENT_CLASSES.map(c => ({ ...c })),
+    modules: [],
+    activities: [],
+    hblDays: [],
+    staffHbl: {},
+    locationAvailability: {},
+  });
+
+  // Replace all app data with a department's stored data. Also resets the
+  // activity form and selection so nothing references another department.
+  const applyDepartmentData = (data: DepartmentData) => {
+    setStaff(data.staff ?? []);
+    setSchedule(data.schedule ?? {});
+    setLocations(data.locations ?? DEFAULT_LOCATIONS);
+    setStudentClasses(data.studentClasses ?? DEFAULT_STUDENT_CLASSES);
+    setModules(data.modules ?? []);
+    setActivities(data.activities ?? []);
+    setHblDays(data.hblDays ?? []);
+    setStaffHbl(data.staffHbl ?? {});
+    setLocationAvailability(data.locationAvailability ?? {});
+    const firstClass = (data.studentClasses ?? DEFAULT_STUDENT_CLASSES)[0];
+    setSelectedEntityId(firstClass ? firstClass.id : '');
+    setSchedulingErrors([]);
+    resetActivityForm();
+  };
+
+  const selectDepartment = (deptId: string) => {
+    if (deptId === currentDepartmentId) {
+      setShowDepartmentSetup(false);
+      return;
+    }
+    // Defensively save the current department before leaving it.
+    if (currentDepartmentId) {
+      saveJSON(departmentDataKey(currentDepartmentId), collectCurrentData());
+    }
+    const data = loadJSON<DepartmentData>(departmentDataKey(deptId));
+    loadedHblRef.current = data
+      ? { hblDays: data.hblDays ?? [], staffHbl: data.staffHbl ?? {} }
+      : { hblDays: [], staffHbl: {} };
+    setCurrentDepartmentId(deptId);
+    applyDepartmentData(data ?? createSeedData());
+    setShowDepartmentSetup(false);
+    setNewDepartmentName('');
+  };
+
+  const createDepartment = () => {
+    const name = newDepartmentName.trim();
+    if (!name) return;
+    // Defensively save the current department before switching.
+    if (currentDepartmentId) {
+      saveJSON(departmentDataKey(currentDepartmentId), collectCurrentData());
+    }
+    const dept: Department = { id: newId(), name };
+    setDepartments(prev => [...prev, dept]);
+    loadedHblRef.current = { hblDays: [], staffHbl: {} };
+    setCurrentDepartmentId(dept.id);
+    applyDepartmentData(createSeedData());
+    setShowDepartmentSetup(false);
+    setNewDepartmentName('');
+  };
+
+  // --- Persistence -----------------------------------------------------------
+
+  // Keep the department list and the currently selected department in storage.
+  useEffect(() => {
+    saveJSON(DEPARTMENTS_KEY, departments);
+  }, [departments]);
+
+  useEffect(() => {
+    if (currentDepartmentId) {
+      saveJSON(CURRENT_DEPARTMENT_KEY, currentDepartmentId);
+    } else {
+      localStorage.removeItem(CURRENT_DEPARTMENT_KEY);
+    }
+  }, [currentDepartmentId]);
+
+  // Save the active department's full data blob on every change. Because each
+  // department has its own storage key, data from different departments never
+  // mixes.
+  useEffect(() => {
+    if (!currentDepartmentId) return;
+    saveJSON(departmentDataKey(currentDepartmentId), collectCurrentData());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDepartmentId, staff, schedule, locations, studentClasses, modules, activities, hblDays, staffHbl, locationAvailability]);
 
   const toggleHblDay = (day: string) => {
     setHblDays(prev => {
@@ -191,9 +384,15 @@ function App() {
   const isFirstHblRender = useRef(true);
   // Whenever HBL settings change, silently rebuild the timetable so activities
   // move to the staff's newly available days (and off their new HBL days).
+  // HBL changes caused by loading a department are ignored so a saved timetable
+  // is never re-scheduled just because the user switched departments.
   useEffect(() => {
     if (isFirstHblRender.current) {
       isFirstHblRender.current = false;
+      return;
+    }
+    if (loadedHblRef.current && sameHblState(loadedHblRef.current, hblDays, staffHbl)) {
+      loadedHblRef.current = null;
       return;
     }
     rebuildTimetable(false);
@@ -979,7 +1178,8 @@ function App() {
     }
 
     const title = 'Weekly Timetable';
-    const headerLine = entityName ? `${viewLabel}: ${entityName}` : viewLabel;
+    const departmentLine = currentDepartment ? `Department: ${currentDepartment.name}` : '';
+    const headerLine = [departmentLine, entityName ? `${viewLabel}: ${entityName}` : viewLabel].filter(Boolean).join(' · ');
 
     // Build the header row: DAY + 10 hourly columns.
     let headerCells = '<th class="day-column-header">DAY</th>';
@@ -1088,6 +1288,55 @@ function App() {
 
   return (
     <div className="app-container">
+      {(showDepartmentSetup || !currentDepartmentId) && (
+        <div className="department-setup-overlay">
+          <div className="department-setup-card">
+            <h2 className="department-setup-title">
+              {currentDepartmentId ? 'Change Department' : 'Department Setup'}
+            </h2>
+            <p className="department-setup-subtitle">
+              Each department keeps its own staff, classes, rooms, modules, activities and rules.
+            </p>
+
+            {departments.length > 0 && (
+              <>
+                <h3 className="form-section-title">SELECT DEPARTMENT</h3>
+                <div className="department-options">
+                  {departments.map(d => (
+                    <button
+                      key={d.id}
+                      className={`department-option ${d.id === currentDepartmentId ? 'active' : ''}`}
+                      onClick={() => selectDepartment(d.id)}
+                    >
+                      {d.name}
+                      {d.id === currentDepartmentId && <span className="department-current-tag">Current</span>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <h3 className="form-section-title">CREATE NEW DEPARTMENT</h3>
+            <div className="department-create-row">
+              <input
+                type="text"
+                placeholder="Department name (e.g. Sales, HR)"
+                value={newDepartmentName}
+                onChange={(e) => setNewDepartmentName(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && createDepartment()}
+                className="module-input"
+              />
+              <button className="btn-dark" onClick={createDepartment}>Create</button>
+            </div>
+
+            {currentDepartmentId && (
+              <button className="department-cancel-btn" onClick={() => setShowDepartmentSetup(false)}>
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <header className="header">
         <div className="header-top">
           <h1>Department <span>Timetable</span></h1>
@@ -1124,6 +1373,18 @@ function App() {
             </button>
           </nav>
         </div>
+
+        {currentDepartment && (
+          <div className="department-bar">
+            <div className="department-badge">
+              <span className="department-label">Department:</span>
+              <span className="department-name">{currentDepartment.name}</span>
+            </div>
+            <button className="department-change-btn" onClick={() => setShowDepartmentSetup(true)}>
+              <span className="icon">🔁</span> Change Department
+            </button>
+          </div>
+        )}
 
         {activeTab === 'timetables' && (
           <div className="timetables-page">
